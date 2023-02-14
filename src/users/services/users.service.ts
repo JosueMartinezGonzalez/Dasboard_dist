@@ -1,85 +1,64 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
-import { Client } from 'pg';
-import * as bcrypt from 'bcrypt';
+import { Injectable, Inject } from '@nestjs/common';
+import { Db } from 'mongodb';
+import { Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import * as bcrypt from 'bcrypt'
 
 import { User } from '../entities/user.entity';
-import { Order } from '../entities/order.entity';
 import { CreateUserDto, UpdateUserDto } from '../dtos/user.dto';
-
-import { ProductsService } from './../../products/services/products.service';
-import { CustomersService } from './customers.service';
+import { ProductsService } from '../../products/services/products.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private productsService: ProductsService,
-    private configService: ConfigService,
-    @Inject('PG') private clientPg: Client,
-    @InjectRepository(User) private userRepo: Repository<User>,
-    private customersService: CustomersService,
+    @Inject('MONGO') private databaseMongo: Db,
+    @InjectModel(User.name) private userModel: Model<User>,
   ) {}
 
   findAll() {
-    const apiKey = this.configService.get('API_KEY');
-    const dbName = this.configService.get('DATABASE_NAME');
-    return this.userRepo.find({
-      relations: ['customer'],
-    });
-  }
-
-  async findOne(id: number) {
-    const user = await this.userRepo.findOne(id);
-    if (!user) {
-      throw new NotFoundException(`User #${id} not found`);
-    }
-    return user;
-  }
-
-  findByEmail(email: string) {
-    return this.userRepo.findOne({ where: { email } });
-  }
-
-  async create(data: CreateUserDto) {
-    const newUser = this.userRepo.create(data);
-    const hashPassword = await bcrypt.hash(newUser.password, 10);
-    newUser.password = hashPassword;
-    if (data.customerId) {
-      const customer = await this.customersService.findOne(data.customerId);
-      newUser.customer = customer;
-    }
-    return this.userRepo.save(newUser);
-  }
-
-  async update(id: number, changes: UpdateUserDto) {
-    const user = await this.findOne(id);
-    this.userRepo.merge(user, changes);
-    return this.userRepo.save(user);
-  }
-
-  remove(id: number) {
-    return this.userRepo.delete(id);
-  }
-
-  async getOrderByUser(id: number) {
-    const user = this.findOne(id);
-    return {
-      date: new Date(),
-      user,
-      products: await this.productsService.findAll(),
-    };
+    return this.userModel.find().exec();
   }
 
   getTasks() {
-    return new Promise((resolve, reject) => {
-      this.clientPg.query('SELECT * FROM tasks', (err, res) => {
-        if (err) {
-          reject(err);
-        }
-        resolve(res.rows);
-      });
-    });
+    const tasksCollection = this.databaseMongo.collection('tasks');
+    return tasksCollection.find().toArray();
+  }
+
+  async findOne(id: string) {
+    return this.userModel.findById(id);
+  }
+
+  async getOrdersByUser(userId: string) {
+    const user = await this.findOne(userId);
+    return {
+      date: new Date(),
+      user,
+      // products: this.productsService.findAll(),
+      products: [],
+    };
+  }
+
+  async create(data: CreateUserDto) {
+    const newModel = new this.userModel(data);
+    const hashPassword = await bcrypt.hash(newModel.password, 10);
+    newModel.password = hashPassword;
+    const model = await newModel.save();
+    const { password, ...rta } = model.toJSON();
+    return rta;
+  }
+
+  findByEmail(email: string) {
+    return this.userModel.findOne({ email }).exec();
+  }
+
+  update(id: string, changes: UpdateUserDto) {
+    return this.userModel
+      .findByIdAndUpdate(id, { $set: changes }, { new: true })
+      .exec();
+  }
+
+  remove(id: string) {
+    return this.userModel.findByIdAndDelete(id);
   }
 }

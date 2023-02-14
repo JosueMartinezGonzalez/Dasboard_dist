@@ -1,21 +1,22 @@
-import { APP_FILTER, NestFactory, Reflector } from '@nestjs/core';
-import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import * as cors from 'cors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
+      whitelist: false,
       forbidNonWhitelisted: true,
       transformOptions: {
         enableImplicitConversion: true,
       },
     }),
   );
+  app.use(cors());
   app.enableCors();
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   const config = new DocumentBuilder()
     .setTitle('API')
