@@ -3,7 +3,7 @@
     "builds": [
         {
             "src": "src/main.ts",
-            "use": "@vercel/node"
+            "use": "npm install --legacy-peer-deps && npm run build"
         }
     ],
     "routes": [
